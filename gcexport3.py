@@ -505,7 +505,7 @@ activity...",
 
         csv_record += (
             empty_record
-            if "activityName" not in a
+            if "activityName" not in a or a["activityName"] is None
             else '"' + a["activityName"].replace('"', '""') + '",'
         )
 
