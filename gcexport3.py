@@ -94,6 +94,11 @@ PARSER.add_argument(
     help="if downloading ZIP files (format: 'original'), unzip the file and removes the ZIP file",
     action="store_true",
 )
+PARSER.add_argument(
+    "--download-only",
+    action="store_true",
+    help="download only files, no futher processing such as CSV or JSON outputs",
+)
 
 ARGS = PARSER.parse_args()
 
