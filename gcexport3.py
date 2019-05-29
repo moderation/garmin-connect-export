@@ -415,7 +415,7 @@ while TOTAL_DOWNLOADED < TOTAL_TO_DOWNLOAD:
             data_filename = (
                 ARGS.directory + "/" + str(a["activityId"]) + "_activity.zip"
             )
-            fit_filename = ARGS.directory + "/" + str(a["activityId"]) + "_activity.fit"
+            fit_filename = ARGS.directory + "/" + str(a["activityId"]) + ".fit"
             download_url = URL_GC_ORIGINAL_ACTIVITY + str(a["activityId"])
             file_mode = "wb"
         else:
