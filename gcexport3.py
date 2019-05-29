@@ -175,6 +175,350 @@ def http_req(url, post=None, headers=None):
 
     return response.read()
 
+def save_details_to_json():
+    print("Activity summary URL: " + URL_GC_ACTIVITY + str(a["activityId"]))
+    ACTIVITY_SUMMARY = http_req(URL_GC_ACTIVITY + str(a["activityId"]))
+    write_to_file(
+        ARGS.directory + "/" + str(a["activityId"]) + "_activity_summary.json",
+        ACTIVITY_SUMMARY.decode(),
+        "a",
+    )
+    JSON_SUMMARY = json.loads(ACTIVITY_SUMMARY)
+    # print(JSON_SUMMARY)
+
+    print(
+        "Device detail URL: "
+        + URL_DEVICE_DETAIL
+        + str(JSON_SUMMARY["metadataDTO"]["deviceApplicationInstallationId"])
+    )
+    DEVICE_DETAIL = http_req(
+        URL_DEVICE_DETAIL
+        + str(JSON_SUMMARY["metadataDTO"]["deviceApplicationInstallationId"])
+    )
+    if DEVICE_DETAIL:
+        write_to_file(
+            ARGS.directory + "/" + str(a["activityId"]) + "_app_info.json",
+            DEVICE_DETAIL.decode(),
+            "a",
+        )
+        JSON_DEVICE = json.loads(DEVICE_DETAIL)
+        # print(JSON_DEVICE)
+    else:
+        print("Retrieving Device Details failed.")
+        JSON_DEVICE = None
+
+    print(
+        "Activity details URL: "
+        + URL_GC_ACTIVITY
+        + str(a["activityId"])
+        + "/details"
+    )
+    try:
+        ACTIVITY_DETAIL = http_req(
+            URL_GC_ACTIVITY + str(a["activityId"]) + "/details"
+        )
+        write_to_file(
+            ARGS.directory + "/" + str(a["activityId"]) + "_activity_detail.json",
+            ACTIVITY_DETAIL.decode(),
+            "a",
+        )
+        JSON_DETAIL = json.loads(ACTIVITY_DETAIL)
+        # print(JSON_DETAIL)
+    except:
+        print("Retrieving Activity Details failed.")
+        JSON_DETAIL = None
+
+    print(
+        "Gear details URL: "
+        + URL_GEAR_DETAIL
+        + "activityId="
+        + str(a["activityId"])
+    )
+    try:
+        GEAR_DETAIL = http_req(
+            URL_GEAR_DETAIL + "activityId=" + str(a["activityId"])
+        )
+        write_to_file(
+            ARGS.directory + "/" + str(a["activityId"]) + "_gear_detail.json",
+            GEAR_DETAIL.decode(),
+            "a",
+        )
+        JSON_GEAR = json.loads(GEAR_DETAIL)
+        # print(JSON_GEAR)
+    except:
+        print("Retrieving Gear Details failed.")
+        # JSON_GEAR = None
+
+    return JSON_SUMMARY, JSON_DEVICE, JSON_DETAIL, JSON_GEAR
+
+def csv_init():
+    CSV_FILENAME = ARGS.directory + "/activities.csv"
+    CSV_EXISTED = isfile(CSV_FILENAME)
+
+    CSV_FILE = open(CSV_FILENAME, "a")
+
+    # Write header to CSV file
+    if not CSV_EXISTED:
+        CSV_FILE.write(
+            "Activity name,\
+    Description,\
+    Bike,\
+    Begin timestamp,\
+    Duration (h:m:s),\
+    Moving duration (h:m:s),\
+    Distance (km),\
+    Average speed (km/h),\
+    Average moving speed (km/h),\
+    Max. speed (km/h),\
+    Elevation loss uncorrected (m),\
+    Elevation gain uncorrected (m),\
+    Elevation min. uncorrected (m),\
+    Elevation max. uncorrected (m),\
+    Min. heart rate (bpm),\
+    Max. heart rate (bpm),\
+    Average heart rate (bpm),\
+    Calories,\
+    Avg. cadence (rpm),\
+    Max. cadence (rpm),\
+    Strokes,\
+    Avg. temp (°C),\
+    Min. temp (°C),\
+    Max. temp (°C),\
+    Map,\
+    End timestamp,\
+    Begin timestamp (ms),\
+    End timestamp (ms),\
+    Device,\
+    Activity type,\
+    Event type,\
+    Time zone,\
+    Begin latitude (°DD),\
+    Begin longitude (°DD),\
+    End latitude (°DD),\
+    End longitude (°DD),\
+    Elevation gain corrected (m),\
+    Elevation loss corrected (m),\
+    Elevation max. corrected (m),\
+    Elevation min. corrected (m),\
+    Sample count\n"
+        )
+    return CSV_FILENAME, CSV_FILE
+
+def write_stats_to_csv(JSON_SUMMARY, JSON_DEVICE, JSON_DETAIL, JSON_GEAR):
+    # Write stats to CSV.
+    empty_record = ","
+    csv_record = ""
+
+    csv_record += (
+        empty_record
+        if "activityName" not in a or not a["activityName"]
+        else '"' + a["activityName"].replace('"', '""') + '",'
+    )
+
+    # maybe a more elegant way of coding this but need to handle description as null
+    if "description" not in a:
+        csv_record += empty_record
+    elif a["description"] is not None:
+        csv_record += '"' + a["description"].replace('"', '""') + '",'
+    else:
+        csv_record += empty_record
+
+    # Gear detail returned as an array so pick the first one
+    csv_record += (
+        empty_record
+        if not JSON_GEAR or "customMakeModel" not in JSON_GEAR[0]
+        else JSON_GEAR[0]["customMakeModel"] + ","
+    )
+    csv_record += (
+        empty_record
+        if "startTimeLocal" not in JSON_SUMMARY["summaryDTO"]
+        else '"' + JSON_SUMMARY["summaryDTO"]["startTimeLocal"] + '",'
+    )
+    csv_record += (
+        empty_record
+        if "elapsedDuration" not in JSON_SUMMARY["summaryDTO"]
+        else hhmmss_from_seconds(JSON_SUMMARY["summaryDTO"]["elapsedDuration"])
+        + ","
+    )
+    csv_record += (
+        empty_record
+        if "movingDuration" not in JSON_SUMMARY["summaryDTO"]
+        else hhmmss_from_seconds(JSON_SUMMARY["summaryDTO"]["movingDuration"]) + ","
+    )
+    csv_record += (
+        empty_record
+        if "distance" not in JSON_SUMMARY["summaryDTO"]
+        else "{0:.5f}".format(JSON_SUMMARY["summaryDTO"]["distance"] / 1000) + ","
+    )
+    csv_record += (
+        empty_record
+        if "averageSpeed" not in JSON_SUMMARY["summaryDTO"]
+        else kmh_from_mps(JSON_SUMMARY["summaryDTO"]["averageSpeed"]) + ","
+    )
+    csv_record += (
+        empty_record
+        if "averageMovingSpeed" not in JSON_SUMMARY["summaryDTO"]
+        else kmh_from_mps(JSON_SUMMARY["summaryDTO"]["averageMovingSpeed"]) + ","
+    )
+    csv_record += (
+        empty_record
+        if "maxSpeed" not in JSON_SUMMARY["summaryDTO"]
+        else kmh_from_mps(JSON_SUMMARY["summaryDTO"]["maxSpeed"]) + ","
+    )
+    csv_record += (
+        empty_record
+        if "elevationLoss" not in JSON_SUMMARY["summaryDTO"]
+        else str(JSON_SUMMARY["summaryDTO"]["elevationLoss"]) + ","
+    )
+    csv_record += (
+        empty_record
+        if "elevationGain" not in JSON_SUMMARY["summaryDTO"]
+        else str(JSON_SUMMARY["summaryDTO"]["elevationGain"]) + ","
+    )
+    csv_record += (
+        empty_record
+        if "minElevation" not in JSON_SUMMARY["summaryDTO"]
+        else str(JSON_SUMMARY["summaryDTO"]["minElevation"]) + ","
+    )
+    csv_record += (
+        empty_record
+        if "maxElevation" not in JSON_SUMMARY["summaryDTO"]
+        else str(JSON_SUMMARY["summaryDTO"]["maxElevation"]) + ","
+    )
+    csv_record += empty_record if "minHR" not in JSON_SUMMARY["summaryDTO"] else ","
+    csv_record += (
+        empty_record
+        if "maxHR" not in JSON_SUMMARY["summaryDTO"]
+        else str(JSON_SUMMARY["summaryDTO"]["maxHR"]) + ","
+    )
+    csv_record += (
+        empty_record
+        if "averageHR" not in JSON_SUMMARY["summaryDTO"]
+        else str(JSON_SUMMARY["summaryDTO"]["averageHR"]) + ","
+    )
+    csv_record += (
+        empty_record
+        if "calories" not in JSON_SUMMARY["summaryDTO"]
+        else str(JSON_SUMMARY["summaryDTO"]["calories"]) + ","
+    )
+    csv_record += (
+        empty_record
+        if "averageBikeCadence" not in JSON_SUMMARY["summaryDTO"]
+        else str(JSON_SUMMARY["summaryDTO"]["averageBikeCadence"]) + ","
+    )
+    csv_record += (
+        empty_record
+        if "maxBikeCadence" not in JSON_SUMMARY["summaryDTO"]
+        else str(JSON_SUMMARY["summaryDTO"]["maxBikeCadence"]) + ","
+    )
+    csv_record += (
+        empty_record
+        if "totalNumberOfStrokes" not in JSON_SUMMARY["summaryDTO"]
+        else str(JSON_SUMMARY["summaryDTO"]["totalNumberOfStrokes"]) + ","
+    )
+    csv_record += (
+        empty_record
+        if "averageTemperature" not in JSON_SUMMARY["summaryDTO"]
+        else str(JSON_SUMMARY["summaryDTO"]["averageTemperature"]) + ","
+    )
+    csv_record += (
+        empty_record
+        if "minTemperature" not in JSON_SUMMARY["summaryDTO"]
+        else str(JSON_SUMMARY["summaryDTO"]["minTemperature"]) + ","
+    )
+    csv_record += (
+        empty_record
+        if "maxTemperature" not in JSON_SUMMARY["summaryDTO"]
+        else str(JSON_SUMMARY["summaryDTO"]["maxTemperature"]) + ","
+    )
+    csv_record += (
+        empty_record
+        if "activityId" not in a
+        else '"https://connect.garmin.com/modern/activity/'
+        + str(a["activityId"])
+        + '",'
+    )
+    csv_record += (
+        empty_record if "endTimestamp" not in JSON_SUMMARY["summaryDTO"] else ","
+    )
+    csv_record += (
+        empty_record if "beginTimestamp" not in JSON_SUMMARY["summaryDTO"] else ","
+    )
+    csv_record += (
+        empty_record if "endTimestamp" not in JSON_SUMMARY["summaryDTO"] else ","
+    )
+    csv_record += (
+        empty_record
+        if not JSON_DEVICE or "productDisplayName" not in JSON_DEVICE
+        else JSON_DEVICE["productDisplayName"]
+        + " "
+        + JSON_DEVICE["versionString"]
+        + ","
+    )
+    csv_record += (
+        empty_record
+        if "activityType" not in a
+        else a["activityType"]["typeKey"].title() + ","
+    )
+    csv_record += (
+        empty_record
+        if "eventType" not in a
+        else a["eventType"]["typeKey"].title() + ","
+    )
+    csv_record += (
+        empty_record
+        if "timeZoneUnitDTO" not in JSON_SUMMARY
+        else JSON_SUMMARY["timeZoneUnitDTO"]["timeZone"] + ","
+    )
+    csv_record += (
+        empty_record
+        if "startLatitude" not in JSON_SUMMARY["summaryDTO"]
+        else str(JSON_SUMMARY["summaryDTO"]["startLatitude"]) + ","
+    )
+    csv_record += (
+        empty_record
+        if "startLongitude" not in JSON_SUMMARY["summaryDTO"]
+        else str(JSON_SUMMARY["summaryDTO"]["startLongitude"]) + ","
+    )
+    csv_record += (
+        empty_record
+        if "endLatitude" not in JSON_SUMMARY["summaryDTO"]
+        else str(JSON_SUMMARY["summaryDTO"]["endLatitude"]) + ","
+    )
+    csv_record += (
+        empty_record
+        if "endLongitude" not in JSON_SUMMARY["summaryDTO"]
+        else str(JSON_SUMMARY["summaryDTO"]["endLongitude"]) + ","
+    )
+    csv_record += (
+        empty_record
+        if "gainCorrectedElevation" not in JSON_SUMMARY["summaryDTO"]
+        else ","
+    )
+    csv_record += (
+        empty_record
+        if "lossCorrectedElevation" not in JSON_SUMMARY["summaryDTO"]
+        else ","
+    )
+    csv_record += (
+        empty_record
+        if "maxCorrectedElevation" not in JSON_SUMMARY["summaryDTO"]
+        else ","
+    )
+    csv_record += (
+        empty_record
+        if "minCorrectedElevation" not in JSON_SUMMARY["summaryDTO"]
+        else ","
+    )
+    csv_record += (
+        empty_record
+        if not JSON_DETAIL or "metricsCount" not in JSON_DETAIL
+        else str(JSON_DETAIL["metricsCount"]) + ","
+    )
+    csv_record += "\n"
+
+    CSV_FILE.write(csv_record)
+
 
 print("Welcome to Garmin Connect Exporter!")
 
@@ -292,56 +636,8 @@ print("Finished authentication")
 if not isdir(ARGS.directory):
     mkdir(ARGS.directory)
 
-CSV_FILENAME = ARGS.directory + "/activities.csv"
-CSV_EXISTED = isfile(CSV_FILENAME)
+CSV_FILENAME, CSV_FILE = csv_init()
 
-CSV_FILE = open(CSV_FILENAME, "a")
-
-# Write header to CSV file
-if not CSV_EXISTED:
-    CSV_FILE.write(
-        "Activity name,\
-Description,\
-Bike,\
-Begin timestamp,\
-Duration (h:m:s),\
-Moving duration (h:m:s),\
-Distance (km),\
-Average speed (km/h),\
-Average moving speed (km/h),\
-Max. speed (km/h),\
-Elevation loss uncorrected (m),\
-Elevation gain uncorrected (m),\
-Elevation min. uncorrected (m),\
-Elevation max. uncorrected (m),\
-Min. heart rate (bpm),\
-Max. heart rate (bpm),\
-Average heart rate (bpm),\
-Calories,\
-Avg. cadence (rpm),\
-Max. cadence (rpm),\
-Strokes,\
-Avg. temp (°C),\
-Min. temp (°C),\
-Max. temp (°C),\
-Map,\
-End timestamp,\
-Begin timestamp (ms),\
-End timestamp (ms),\
-Device,\
-Activity type,\
-Event type,\
-Time zone,\
-Begin latitude (°DD),\
-Begin longitude (°DD),\
-End latitude (°DD),\
-End longitude (°DD),\
-Elevation gain corrected (m),\
-Elevation loss corrected (m),\
-Elevation max. corrected (m),\
-Elevation min. corrected (m),\
-Sample count\n"
-    )
 
 DOWNLOAD_ALL = False
 if ARGS.count == "all":
@@ -475,292 +771,8 @@ activity...",
         # Persist file
         write_to_file(data_filename, decoding_decider(data), file_mode)
 
-        print("Activity summary URL: " + URL_GC_ACTIVITY + str(a["activityId"]))
-        ACTIVITY_SUMMARY = http_req(URL_GC_ACTIVITY + str(a["activityId"]))
-        write_to_file(
-            ARGS.directory + "/" + str(a["activityId"]) + "_activity_summary.json",
-            ACTIVITY_SUMMARY.decode(),
-            "a",
-        )
-        JSON_SUMMARY = json.loads(ACTIVITY_SUMMARY)
-        # print(JSON_SUMMARY)
-
-        print(
-            "Device detail URL: "
-            + URL_DEVICE_DETAIL
-            + str(JSON_SUMMARY["metadataDTO"]["deviceApplicationInstallationId"])
-        )
-        DEVICE_DETAIL = http_req(
-            URL_DEVICE_DETAIL
-            + str(JSON_SUMMARY["metadataDTO"]["deviceApplicationInstallationId"])
-        )
-        if DEVICE_DETAIL:
-            write_to_file(
-                ARGS.directory + "/" + str(a["activityId"]) + "_app_info.json",
-                DEVICE_DETAIL.decode(),
-                "a",
-            )
-            JSON_DEVICE = json.loads(DEVICE_DETAIL)
-            # print(JSON_DEVICE)
-        else:
-            print("Retrieving Device Details failed.")
-            JSON_DEVICE = None
-
-        print(
-            "Activity details URL: "
-            + URL_GC_ACTIVITY
-            + str(a["activityId"])
-            + "/details"
-        )
-        try:
-            ACTIVITY_DETAIL = http_req(
-                URL_GC_ACTIVITY + str(a["activityId"]) + "/details"
-            )
-            write_to_file(
-                ARGS.directory + "/" + str(a["activityId"]) + "_activity_detail.json",
-                ACTIVITY_DETAIL.decode(),
-                "a",
-            )
-            JSON_DETAIL = json.loads(ACTIVITY_DETAIL)
-            # print(JSON_DETAIL)
-        except:
-            print("Retrieving Activity Details failed.")
-            JSON_DETAIL = None
-
-        print(
-            "Gear details URL: "
-            + URL_GEAR_DETAIL
-            + "activityId="
-            + str(a["activityId"])
-        )
-        try:
-            GEAR_DETAIL = http_req(
-                URL_GEAR_DETAIL + "activityId=" + str(a["activityId"])
-            )
-            write_to_file(
-                ARGS.directory + "/" + str(a["activityId"]) + "_gear_detail.json",
-                GEAR_DETAIL.decode(),
-                "a",
-            )
-            JSON_GEAR = json.loads(GEAR_DETAIL)
-            # print(JSON_GEAR)
-        except:
-            print("Retrieving Gear Details failed.")
-            # JSON_GEAR = None
-
-        # Write stats to CSV.
-        empty_record = ","
-        csv_record = ""
-
-        csv_record += (
-            empty_record
-            if "activityName" not in a or not a["activityName"]
-            else '"' + a["activityName"].replace('"', '""') + '",'
-        )
-
-        # maybe a more elegant way of coding this but need to handle description as null
-        if "description" not in a:
-            csv_record += empty_record
-        elif a["description"] is not None:
-            csv_record += '"' + a["description"].replace('"', '""') + '",'
-        else:
-            csv_record += empty_record
-
-        # Gear detail returned as an array so pick the first one
-        csv_record += (
-            empty_record
-            if not JSON_GEAR or "customMakeModel" not in JSON_GEAR[0]
-            else JSON_GEAR[0]["customMakeModel"] + ","
-        )
-        csv_record += (
-            empty_record
-            if "startTimeLocal" not in JSON_SUMMARY["summaryDTO"]
-            else '"' + JSON_SUMMARY["summaryDTO"]["startTimeLocal"] + '",'
-        )
-        csv_record += (
-            empty_record
-            if "elapsedDuration" not in JSON_SUMMARY["summaryDTO"]
-            else hhmmss_from_seconds(JSON_SUMMARY["summaryDTO"]["elapsedDuration"])
-            + ","
-        )
-        csv_record += (
-            empty_record
-            if "movingDuration" not in JSON_SUMMARY["summaryDTO"]
-            else hhmmss_from_seconds(JSON_SUMMARY["summaryDTO"]["movingDuration"]) + ","
-        )
-        csv_record += (
-            empty_record
-            if "distance" not in JSON_SUMMARY["summaryDTO"]
-            else "{0:.5f}".format(JSON_SUMMARY["summaryDTO"]["distance"] / 1000) + ","
-        )
-        csv_record += (
-            empty_record
-            if "averageSpeed" not in JSON_SUMMARY["summaryDTO"]
-            else kmh_from_mps(JSON_SUMMARY["summaryDTO"]["averageSpeed"]) + ","
-        )
-        csv_record += (
-            empty_record
-            if "averageMovingSpeed" not in JSON_SUMMARY["summaryDTO"]
-            else kmh_from_mps(JSON_SUMMARY["summaryDTO"]["averageMovingSpeed"]) + ","
-        )
-        csv_record += (
-            empty_record
-            if "maxSpeed" not in JSON_SUMMARY["summaryDTO"]
-            else kmh_from_mps(JSON_SUMMARY["summaryDTO"]["maxSpeed"]) + ","
-        )
-        csv_record += (
-            empty_record
-            if "elevationLoss" not in JSON_SUMMARY["summaryDTO"]
-            else str(JSON_SUMMARY["summaryDTO"]["elevationLoss"]) + ","
-        )
-        csv_record += (
-            empty_record
-            if "elevationGain" not in JSON_SUMMARY["summaryDTO"]
-            else str(JSON_SUMMARY["summaryDTO"]["elevationGain"]) + ","
-        )
-        csv_record += (
-            empty_record
-            if "minElevation" not in JSON_SUMMARY["summaryDTO"]
-            else str(JSON_SUMMARY["summaryDTO"]["minElevation"]) + ","
-        )
-        csv_record += (
-            empty_record
-            if "maxElevation" not in JSON_SUMMARY["summaryDTO"]
-            else str(JSON_SUMMARY["summaryDTO"]["maxElevation"]) + ","
-        )
-        csv_record += empty_record if "minHR" not in JSON_SUMMARY["summaryDTO"] else ","
-        csv_record += (
-            empty_record
-            if "maxHR" not in JSON_SUMMARY["summaryDTO"]
-            else str(JSON_SUMMARY["summaryDTO"]["maxHR"]) + ","
-        )
-        csv_record += (
-            empty_record
-            if "averageHR" not in JSON_SUMMARY["summaryDTO"]
-            else str(JSON_SUMMARY["summaryDTO"]["averageHR"]) + ","
-        )
-        csv_record += (
-            empty_record
-            if "calories" not in JSON_SUMMARY["summaryDTO"]
-            else str(JSON_SUMMARY["summaryDTO"]["calories"]) + ","
-        )
-        csv_record += (
-            empty_record
-            if "averageBikeCadence" not in JSON_SUMMARY["summaryDTO"]
-            else str(JSON_SUMMARY["summaryDTO"]["averageBikeCadence"]) + ","
-        )
-        csv_record += (
-            empty_record
-            if "maxBikeCadence" not in JSON_SUMMARY["summaryDTO"]
-            else str(JSON_SUMMARY["summaryDTO"]["maxBikeCadence"]) + ","
-        )
-        csv_record += (
-            empty_record
-            if "totalNumberOfStrokes" not in JSON_SUMMARY["summaryDTO"]
-            else str(JSON_SUMMARY["summaryDTO"]["totalNumberOfStrokes"]) + ","
-        )
-        csv_record += (
-            empty_record
-            if "averageTemperature" not in JSON_SUMMARY["summaryDTO"]
-            else str(JSON_SUMMARY["summaryDTO"]["averageTemperature"]) + ","
-        )
-        csv_record += (
-            empty_record
-            if "minTemperature" not in JSON_SUMMARY["summaryDTO"]
-            else str(JSON_SUMMARY["summaryDTO"]["minTemperature"]) + ","
-        )
-        csv_record += (
-            empty_record
-            if "maxTemperature" not in JSON_SUMMARY["summaryDTO"]
-            else str(JSON_SUMMARY["summaryDTO"]["maxTemperature"]) + ","
-        )
-        csv_record += (
-            empty_record
-            if "activityId" not in a
-            else '"https://connect.garmin.com/modern/activity/'
-            + str(a["activityId"])
-            + '",'
-        )
-        csv_record += (
-            empty_record if "endTimestamp" not in JSON_SUMMARY["summaryDTO"] else ","
-        )
-        csv_record += (
-            empty_record if "beginTimestamp" not in JSON_SUMMARY["summaryDTO"] else ","
-        )
-        csv_record += (
-            empty_record if "endTimestamp" not in JSON_SUMMARY["summaryDTO"] else ","
-        )
-        csv_record += (
-            empty_record
-            if not JSON_DEVICE or "productDisplayName" not in JSON_DEVICE
-            else JSON_DEVICE["productDisplayName"]
-            + " "
-            + JSON_DEVICE["versionString"]
-            + ","
-        )
-        csv_record += (
-            empty_record
-            if "activityType" not in a
-            else a["activityType"]["typeKey"].title() + ","
-        )
-        csv_record += (
-            empty_record
-            if "eventType" not in a
-            else a["eventType"]["typeKey"].title() + ","
-        )
-        csv_record += (
-            empty_record
-            if "timeZoneUnitDTO" not in JSON_SUMMARY
-            else JSON_SUMMARY["timeZoneUnitDTO"]["timeZone"] + ","
-        )
-        csv_record += (
-            empty_record
-            if "startLatitude" not in JSON_SUMMARY["summaryDTO"]
-            else str(JSON_SUMMARY["summaryDTO"]["startLatitude"]) + ","
-        )
-        csv_record += (
-            empty_record
-            if "startLongitude" not in JSON_SUMMARY["summaryDTO"]
-            else str(JSON_SUMMARY["summaryDTO"]["startLongitude"]) + ","
-        )
-        csv_record += (
-            empty_record
-            if "endLatitude" not in JSON_SUMMARY["summaryDTO"]
-            else str(JSON_SUMMARY["summaryDTO"]["endLatitude"]) + ","
-        )
-        csv_record += (
-            empty_record
-            if "endLongitude" not in JSON_SUMMARY["summaryDTO"]
-            else str(JSON_SUMMARY["summaryDTO"]["endLongitude"]) + ","
-        )
-        csv_record += (
-            empty_record
-            if "gainCorrectedElevation" not in JSON_SUMMARY["summaryDTO"]
-            else ","
-        )
-        csv_record += (
-            empty_record
-            if "lossCorrectedElevation" not in JSON_SUMMARY["summaryDTO"]
-            else ","
-        )
-        csv_record += (
-            empty_record
-            if "maxCorrectedElevation" not in JSON_SUMMARY["summaryDTO"]
-            else ","
-        )
-        csv_record += (
-            empty_record
-            if "minCorrectedElevation" not in JSON_SUMMARY["summaryDTO"]
-            else ","
-        )
-        csv_record += (
-            empty_record
-            if not JSON_DETAIL or "metricsCount" not in JSON_DETAIL
-            else str(JSON_DETAIL["metricsCount"]) + ","
-        )
-        csv_record += "\n"
-
-        CSV_FILE.write(csv_record)
+        JSON_SUMMARY, JSON_DEVICE, JSON_DETAIL, JSON_GEAR = save_details_to_json()
+        write_stats_to_csv(JSON_SUMMARY, JSON_DEVICE, JSON_DETAIL, JSON_GEAR)
 
         if ARGS.format == "gpx" and data:
             # Validate GPX data. If we have an activity without GPS data (e.g., running on a
