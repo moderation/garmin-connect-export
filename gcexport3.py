@@ -636,7 +636,8 @@ print("Finished authentication")
 if not isdir(ARGS.directory):
     mkdir(ARGS.directory)
 
-CSV_FILENAME, CSV_FILE = csv_init()
+if ARGS.download_only is False:
+    CSV_FILENAME, CSV_FILE = csv_init()
 
 
 DOWNLOAD_ALL = False
@@ -662,8 +663,9 @@ if ARGS.count == "all":
     USER_STATS = http_req(URL_GC_USERSTATS + DISPLAY_NAME)
     print("Finished display name and user stats ~~~~~~~~~~~~~~~~~~~~~~~~~~~")
 
-    # Persist JSON
-    write_to_file(ARGS.directory + "/userstats.json", USER_STATS.decode(), "a")
+    if ARGS.download_only is False:
+        # Persist JSON
+        write_to_file(ARGS.directory + "/userstats.json", USER_STATS.decode(), "a")
 
     # Modify total_to_download based on how many activities the server reports.
     JSON_USER = json.loads(USER_STATS)
@@ -689,7 +691,8 @@ while TOTAL_DOWNLOADED < TOTAL_TO_DOWNLOAD:
     # Query Garmin Connect
     print("Activity list URL: " + URL_GC_LIST + urllib.parse.urlencode(SEARCH_PARAMS))
     ACTIVITY_LIST = http_req(URL_GC_LIST + urllib.parse.urlencode(SEARCH_PARAMS))
-    write_to_file(ARGS.directory + "/activity_list.json", ACTIVITY_LIST.decode(), "a")
+    if ARGS.download_only is False:
+        write_to_file(ARGS.directory + "/activity_list.json", ACTIVITY_LIST.decode(), "a")
     LIST = json.loads(ACTIVITY_LIST)
     # print(LIST)
 
@@ -771,8 +774,9 @@ activity...",
         # Persist file
         write_to_file(data_filename, decoding_decider(data), file_mode)
 
-        JSON_SUMMARY, JSON_DEVICE, JSON_DETAIL, JSON_GEAR = save_details_to_json()
-        write_stats_to_csv(JSON_SUMMARY, JSON_DEVICE, JSON_DETAIL, JSON_GEAR)
+        if ARGS.download_only is False:
+            JSON_SUMMARY, JSON_DEVICE, JSON_DETAIL, JSON_GEAR = save_details_to_json()
+            write_stats_to_csv(JSON_SUMMARY, JSON_DEVICE, JSON_DETAIL, JSON_GEAR)
 
         if ARGS.format == "gpx" and data:
             # Validate GPX data. If we have an activity without GPS data (e.g., running on a
@@ -805,12 +809,14 @@ activity...",
     TOTAL_DOWNLOADED += NUM_TO_DOWNLOAD
 # End while loop for multiple chunks.
 
-CSV_FILE.close()
+if ARGS.download_only is False:
+    CSV_FILE.close()
 
-if len(ARGS.external):
-    print("Open CSV output.")
-    print(CSV_FILENAME)
-    # open CSV file. Comment this line out if you don't want this behavior
-    call([ARGS.external, "--" + ARGS.args, CSV_FILENAME])
+if ARGS.download_only is False:
+    if len(ARGS.external):
+        print("Open CSV output.")
+        print(CSV_FILENAME)
+        # open CSV file. Comment this line out if you don't want this behavior
+        call([ARGS.external, "--" + ARGS.args, CSV_FILENAME])
 
 print("Done!")
