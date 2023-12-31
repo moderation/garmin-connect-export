@@ -1,8 +1,8 @@
 #!/usr/bin/python3.12
 # -*- coding: utf-8 -*-
 
-"""
-File: gcexport.py
+"""File: gcexport.py.
+
 Original author: Kyle Krafka (https://github.com/kjkjava/)
 Date: April 28, 2015
 Fork author: Michael P (https://github.com/moderation/)
@@ -16,37 +16,40 @@ Activity & event types:
     https://connect.garmin.com/modern/main/js/properties/activity_types/activity_types.properties
 """
 
-from datetime import datetime, timedelta
-from getpass import getpass
-from os import mkdir, remove, stat
-from os.path import isdir, isfile
-from subprocess import call
-from sys import argv
-
-# from xml.dom.minidom import parseString
-from defusedxml.minidom import parseString
-
 import argparse
 import http.cookiejar
-import logging
 import json
+import logging
 import re
-
-# import urllib.error
-from urllib.error import HTTPError, URLError
 import urllib.parse
 import urllib.request
 import zipfile
+from datetime import datetime, timedelta
+from getpass import getpass
+from pathlib import Path
+from subprocess import call
+from sys import argv, exit
+from urllib.error import HTTPError, URLError
 
 import garth
+from defusedxml.minidom import parseString
 
 SCRIPT_VERSION = "3.0.0"
 CURRENT_DATE = datetime.now().strftime("%Y-%m-%d")
 ACTIVITIES_DIRECTORY = "./" + CURRENT_DATE + "_garmin_connect_export"
 
+# https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/200
+# https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/204
+# https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404
+# https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500
+HTTP_OK = 200
+HTTP_NO_CONTENT = 204
+HTTP_NOT_FOUND = 404
+HTTP_INTERNAL_SERVER_ERROR = 500
+
 PARSER = argparse.ArgumentParser()
 
-# TODO: Implement verbose and/or quiet options.
+# TODO @moderation: Implement verbose and/or quiet options.
 # PARSER.add_argument('-v', '--verbose', help="increase output verbosity", action="store_true")
 PARSER.add_argument("--version", help="print version and exit", action="store_true")
 PARSER.add_argument(
@@ -135,20 +138,17 @@ def kmh_from_mps(mps):
 
 def write_to_file(filename, content, mode):
     """Helper function that persists content to file."""
-    with open(filename, mode) as write_file:
+    with Path(filename).open(mode) as write_file:
         write_file.write(content)
     write_file.close()
 
 
 def decoding_decider(data):
     """Helper function that decides if a decoding should happen or not."""
-    if ARGS.format == "original":
+    if ARGS.format != "original":
         # An original file (ZIP file) is binary and not UTF-8 encoded
-        data = data
-    elif data:
         # GPX and TCX are textfiles and UTF-8 encoded
         data = data.decode()
-
     return data
 
 
@@ -162,7 +162,8 @@ def http_req(url, post=None, headers=None):
         "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
     )
     request.add_header(
-        "nk", "NT"
+        "nk",
+        "NT",
     )  # necessary since 2021-02-23 to avoid http error code 402
     request.add_header("authorization", str(garth.client.oauth2_token))
     request.add_header("di-backend", "connectapi.garmin.com")
@@ -190,16 +191,16 @@ def http_req(url, post=None, headers=None):
         if hasattr(ex, "reason"):
             logging.error("Failed to reach url %s, error: %s", url, ex)
         raise
-    logging.debug("Got %s in %s s from %s", response.getcode(), url)
+    logging.debug("Got %s from %s", response.getcode(), url)
     logging.debug("Headers returned:\n%s", response.info())
 
-    if response.getcode() == 204:
+    if response.getcode() == HTTP_NO_CONTENT:
         # For activities without GPS coordinates, there is no GPX download (204 = no content).
         # Write an empty file to prevent redownloading it.
         print("Writing empty file since there was no GPX activity data...")
         return ""
-    elif response.getcode() != 200:
-        raise Exception("Bad return code (" + str(response.getcode()) + ") for: " + url)
+    elif response.getcode() != HTTP_OK:
+        raise Exception(f"Bad return code ({response.getcode()}) for: {url}")
     # print(response.getcode())
 
     return response.read()
@@ -208,10 +209,10 @@ def http_req(url, post=None, headers=None):
 print("Welcome to Garmin Connect Exporter!")
 
 # Create directory for data files.
-if isdir(ARGS.directory):
+if Path(ARGS.directory).is_dir():
     print(
         "Warning: Output directory already exists. Will skip already-downloaded files"
-        " and append to the CSV file."
+        " and append to the CSV file.",
     )
 
 USERNAME = ARGS.username if ARGS.username else input("Username: ")
@@ -274,18 +275,18 @@ try:
     garth.login(USERNAME, PASSWORD)
 except Exception as ex:
     raise GarminException(
-        f"Authentication failure ({ex}). Did you enter correct credentials?"
+        f"Authentication failure ({ex}). Did you enter correct credentials?",
     ) from ex
 print("Finish login post")
 
 # We should be logged in now.
-if not isdir(ARGS.directory):
-    mkdir(ARGS.directory)
+if not Path(ARGS.directory).is_dir():
+    Path(ARGS.directory).mkdir()
 
 CSV_FILENAME = ARGS.directory + "/activities.csv"
-CSV_EXISTED = isfile(CSV_FILENAME)
+CSV_EXISTED = Path(CSV_FILENAME).is_file()
 
-with open(CSV_FILENAME, "a") as CSV_FILE:
+with Path(CSV_FILENAME).open("a") as CSV_FILE:
     # Write header to CSV file
     if not CSV_EXISTED:
         CSV_FILE.write(
@@ -299,7 +300,7 @@ with open(CSV_FILENAME, "a") as CSV_FILE:
             " timestamp (ms),Device,Activity type,Event type,Time zone,Begin latitude"
             " (°DD),Begin longitude (°DD),End latitude (°DD),End longitude (°DD),Elevation"
             " gain corrected (m),Elevation loss corrected (m),Elevation max. corrected"
-            " (m),Elevation min. corrected (m),Sample count\n"
+            " (m),Elevation min. corrected (m),Sample count\n",
         )
 
     DOWNLOAD_ALL = False
@@ -313,11 +314,13 @@ with open(CSV_FILENAME, "a") as CSV_FILE:
         # extract the display name from the profile page, it should be in there as
         # \"displayName\":\"eschep\"
         PATTERN = re.compile(
-            r".*\\\"displayName\\\":\\\"([-.\w]+)\\\".*", re.MULTILINE | re.DOTALL
+            r'.*"displayName":"([-.\w]+)".*',
+            re.MULTILINE | re.DOTALL,
         )
         MATCH = PATTERN.match(PROFILE_PAGE)
         if not MATCH:
-            raise Exception("Did not find the display name in the profile page.")
+            msg = "Did not find the display name in the profile page."
+            raise Exception(msg)
         DISPLAY_NAME = MATCH.group(1)
         print("displayName=" + DISPLAY_NAME)
 
@@ -351,11 +354,13 @@ with open(CSV_FILENAME, "a") as CSV_FILE:
 
         # Query Garmin Connect
         print(
-            "Activity list URL: " + URL_GC_LIST + urllib.parse.urlencode(SEARCH_PARAMS)
+            "Activity list URL: " + URL_GC_LIST + urllib.parse.urlencode(SEARCH_PARAMS),
         )
         ACTIVITY_LIST = http_req(URL_GC_LIST + urllib.parse.urlencode(SEARCH_PARAMS))
         write_to_file(
-            ARGS.directory + "/activity_list.json", ACTIVITY_LIST.decode(), "a"
+            ARGS.directory + "/activity_list.json",
+            ACTIVITY_LIST.decode(),
+            "a",
         )
         LIST = json.loads(ACTIVITY_LIST)
         # print(LIST)
@@ -389,13 +394,14 @@ with open(CSV_FILENAME, "a") as CSV_FILE:
                 download_url = URL_GC_ORIGINAL_ACTIVITY + str(a["activityId"])
                 file_mode = "wb"
             else:
-                raise Exception("Unrecognized format.")
+                msg = "Unrecognized format."
+                raise Exception(msg)
 
-            if isfile(data_filename):
+            if Path(data_filename).is_file():
                 print("\tData file already exists; skipping...")
                 continue
             # Regardless of unzip setting, don't redownload if the ZIP or FIT file exists.
-            if ARGS.format == "original" and isfile(fit_filename):
+            if ARGS.format == "original" and Path(fit_filename).is_file():
                 print("\tFIT data file already exists; skipping...")
                 continue
 
@@ -408,7 +414,7 @@ with open(CSV_FILENAME, "a") as CSV_FILE:
                 data = http_req(download_url)
             except urllib.error.HTTPError as errs:
                 # Handle expected (though unfortunate) error codes; die on unexpected ones.
-                if errs.code == 500 and ARGS.format == "tcx":
+                if errs.code == HTTP_INTERNAL_SERVER_ERROR and ARGS.format == "tcx":
                     # Garmin will give an internal server error (HTTP 500) when downloading TCX files
                     # if the original was a manual GPX upload. Writing an empty file prevents this file
                     # from being redownloaded, similar to the way GPX files are saved even when there
@@ -421,7 +427,7 @@ with open(CSV_FILENAME, "a") as CSV_FILE:
                         end=" ",
                     )
                     data = ""
-                elif errs.code == 404 and ARGS.format == "original":
+                elif errs.code == HTTP_NOT_FOUND and ARGS.format == "original":
                     # For manual activities (i.e., entered in online without a file upload), there is
                     # no original file. # Write an empty file to prevent redownloading it.
                     print(
@@ -434,7 +440,7 @@ with open(CSV_FILENAME, "a") as CSV_FILE:
                         "Failed. Got an unexpected HTTP error ("
                         + str(errs.code)
                         + download_url
-                        + ")."
+                        + ").",
                     )
 
             # Persist file
@@ -453,11 +459,11 @@ with open(CSV_FILENAME, "a") as CSV_FILE:
             print(
                 "Device detail URL: "
                 + URL_DEVICE_DETAIL
-                + str(JSON_SUMMARY["metadataDTO"]["deviceApplicationInstallationId"])
+                + str(JSON_SUMMARY["metadataDTO"]["deviceApplicationInstallationId"]),
             )
             DEVICE_DETAIL = http_req(
                 URL_DEVICE_DETAIL
-                + str(JSON_SUMMARY["metadataDTO"]["deviceApplicationInstallationId"])
+                + str(JSON_SUMMARY["metadataDTO"]["deviceApplicationInstallationId"]),
             )
             if DEVICE_DETAIL:
                 write_to_file(
@@ -475,11 +481,11 @@ with open(CSV_FILENAME, "a") as CSV_FILE:
                 "Activity details URL: "
                 + URL_GC_ACTIVITY
                 + str(a["activityId"])
-                + "/details"
+                + "/details",
             )
             try:
                 ACTIVITY_DETAIL = http_req(
-                    URL_GC_ACTIVITY + str(a["activityId"]) + "/details"
+                    URL_GC_ACTIVITY + str(a["activityId"]) + "/details",
                 )
                 write_to_file(
                     ARGS.directory
@@ -491,8 +497,10 @@ with open(CSV_FILENAME, "a") as CSV_FILE:
                 )
                 JSON_DETAIL = json.loads(ACTIVITY_DETAIL)
                 # print(JSON_DETAIL)
-            except:
-                print("Retrieving Activity Details failed.")
+            except HTTPError as ex:
+                if hasattr(ex, "code"):
+                    logging.error("Retrieving Activity Details failed, error: %s", ex)
+                raise
                 JSON_DETAIL = None
 
             print("Gear details URL: " + URL_GEAR_DETAIL + str(a["activityId"]))
@@ -505,9 +513,11 @@ with open(CSV_FILENAME, "a") as CSV_FILE:
                 )
                 JSON_GEAR = json.loads(GEAR_DETAIL)
                 # print(JSON_GEAR)
-            except:
-                print("Retrieving Gear Details failed.")
-                # JSON_GEAR = None
+            except HTTPError as ex:
+                if hasattr(ex, "code"):
+                    logging.error("Retrieving Gear Details failed, error: %s", ex)
+                raise
+                JSON_GEAR = None
 
             # Write stats to CSV.
             empty_record = ","
@@ -748,19 +758,19 @@ with open(CSV_FILENAME, "a") as CSV_FILE:
                 # Even manual upload of a GPX file is zipped, but we'll validate the extension.
                 if ARGS.unzip and data_filename[-3:].lower() == "zip":
                     print("Unzipping and removing original files...", end=" ")
-                    print("Filesize is: " + str(stat(data_filename).st_size))
-                    if stat(data_filename).st_size > 0:
-                        with open(data_filename, "rb") as zip_file:
+                    print("Filesize is: " + str(Path(data_filename).stat().st_size))
+                    if Path(data_filename).stat().st_size > 0:
+                        with Path(data_filename).open("rb") as zip_file:
                             z = zipfile.ZipFile(zip_file)
                         for name in z.namelist():
                             z.extract(name, ARGS.directory)
                         zip_file.close()
                     else:
                         print("Skipping 0Kb zip file.")
-                    remove(data_filename)
+                    Path(data_filename).unlink()
                 print("Done.")
             else:
-                # TODO: Consider validating other formats.
+                # TODO @moderation: Consider validating other formats.
                 print("Done.")
         TOTAL_DOWNLOADED += NUM_TO_DOWNLOAD
     # End while loop for multiple chunks.
