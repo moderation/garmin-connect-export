@@ -1,3 +1,8 @@
+[project]
+name = "garmin-connect-export"
+# Support Python 3.12+.
+requires-python = ">=3.12"
+
 [tool.ruff]
 # Increase the maximum line length to 120 characters.
 line-length = 120
@@ -7,10 +12,7 @@ line-length = 120
 #   "UP",  # pyupgrade
 #   "D",   # pydocstyle
 #]
-ignore = ["T201","ERA001"]
-select = ["ALL"]
+lint.ignore = ["D203","D212","FIX002","T201","ERA001"]
+lint.select = ["ALL"]
 src = ["src"]
 
-[project]
-# Support Python 3.12+.
-requires-python = ">=3.12"

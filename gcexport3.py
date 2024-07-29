@@ -267,16 +267,15 @@ URL_DEVICE_DETAIL = f"{BASE_URL}/device-service/deviceservice/app-info/"
 URL_GEAR_DETAIL = f"{BASE_URL}/gear-service/gear/filterGear?activityId="
 
 
-class GarminException(Exception):
+class GarminError(Exception):
     """Exception for problems with Garmin Connect (connection, data consistency etc)."""
 
 
 try:
     garth.login(USERNAME, PASSWORD)
 except Exception as ex:
-    raise GarminException(
-        f"Authentication failure ({ex}). Did you enter correct credentials?",
-    ) from ex
+    msg = f"Authentication failure ({ex}). Did you enter correct credentials?"
+    raise GarminError(msg) from ex
 print("Finish login post")
 
 # We should be logged in now.
