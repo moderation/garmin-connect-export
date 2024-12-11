@@ -1,4 +1,6 @@
 .DS_Store
+build/
 extras/
+garmin_connect_export.egg-info/
 *_garmin_connect_export/
 *.pyc

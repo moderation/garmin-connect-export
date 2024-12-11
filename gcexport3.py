@@ -1,4 +1,4 @@
-#!/usr/bin/python3.12
+#!/usr/bin/python3.13
 # -*- coding: utf-8 -*-
 
 """File: gcexport.py.
@@ -155,11 +155,17 @@ def decoding_decider(data):
 # url is a string, post is a dictionary of POST parameters, headers is a dictionary of headers.
 def http_req(url, post=None, headers=None):
     """Helper function that makes the HTTP requests."""
+
+    # Enforce HTTPS scheme
+    if not url.startswith("https://"):
+        raise ValueError(f"URL must use HTTPS scheme: {url}")
+
     request = urllib.request.Request(url)
+
     # Tell Garmin we're some supported browser.
     request.add_header(
         "User-Agent",
-        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
     )
     request.add_header(
         "nk",
