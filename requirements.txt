@@ -1,2 +1,2 @@
 defusedxml>=0.7.1
-garth>=0.5.1
+garth>=0.5.2
